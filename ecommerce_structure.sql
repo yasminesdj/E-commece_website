@@ -221,3 +221,16 @@ BEGIN
 END $$
 
 DELIMITER ;
+
+
+DELIMITER $$
+
+CREATE TRIGGER trg_log_cancelled_order
+AFTER DELETE ON details_commande
+FOR EACH ROW
+BEGIN
+    INSERT INTO historique_annulation(id_commande, id_item, quantite, date_annulation)
+    VALUES (OLD.id_commande, OLD.id_item, OLD.quantite, NOW());
+END$$
+
+DELIMITER ;

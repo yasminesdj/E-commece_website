@@ -8,23 +8,37 @@ if (!isset($_SESSION["role"]) || $_SESSION["role"] !== "admin") {
     exit();
 }
 
-// Supprimer une commande si demandée (les triggers s'occupent du reste)
+// Marquer une commande comme annulée si demandé
 if (isset($_GET['delete'])) {
-  $id = intval($_GET['delete']);
+    $id = intval($_GET['delete']);
 
-  // Supprime uniquement la commande : les détails seront supprimés automatiquement (ON DELETE CASCADE)
-  $stmt = $mysqli->prepare("DELETE FROM commandes WHERE id = ?");
-  $stmt->bind_param("i", $id);
-  $stmt->execute();
+    // 1. Récupérer les détails avant suppression
+    $queryDetails = "SELECT id_item, quantite FROM details_commande WHERE id_commande = ?";
+    $stmt = $mysqli->prepare($queryDetails);
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $details = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-  header("Location: admin_commandes.php");
-  exit();
+    // 2. Insérer manuellement dans historique_annulation (comme un trigger)
+    $stmtInsert = $mysqli->prepare("INSERT INTO historique_annulation (id_commande, id_item, quantite, date_annulation) VALUES (?, ?, ?, NOW())");
+    foreach ($details as $d) {
+        $stmtInsert->bind_param("iii", $id, $d['id_item'], $d['quantite']);
+        $stmtInsert->execute();
+    }
+
+    // 3. Supprimer les détails (cascade évité)
+    $mysqli->query("DELETE FROM details_commande WHERE id_commande = $id");
+
+    // 4. Mettre à jour le statut au lieu de supprimer
+    $mysqli->query("UPDATE commandes SET statut = 'annulée' WHERE id = $id");
+
+    header("Location: admin_commandes.php");
+    exit();
 }
 
-
-// Récupérer les commandes avec jointure utilisateur + details + items
+// Charger les commandes
 $query = "
-SELECT c.id AS id_commande, u.nom AS client, c.date_commande,
+SELECT c.id AS id_commande, u.nom AS client, c.date_commande, c.statut,
        i.nom AS produit, dc.quantite, dc.prix_unitaire
 FROM commandes c
 JOIN utilisateurs u ON c.id_utilisateur = u.id
@@ -43,6 +57,7 @@ while ($row = $result->fetch_assoc()) {
         $commandes[$id] = [
             "client" => $row["client"],
             "date" => $row["date_commande"],
+            "statut" => $row["statut"],
             "produits" => [],
             "total" => 0
         ];
@@ -51,6 +66,7 @@ while ($row = $result->fetch_assoc()) {
     $commandes[$id]["total"] += $row["quantite"] * $row["prix_unitaire"];
 }
 ?>
+
 
 <!DOCTYPE html>
 <html lang="fr">
@@ -146,6 +162,7 @@ while ($row = $result->fetch_assoc()) {
             <th>Date</th>
             <th>Produits</th>
             <th>Total (DA)</th>
+            <th>Statut</th>
             <th class="actions">Action</th>
           </tr>
         </thead>
@@ -156,6 +173,7 @@ while ($row = $result->fetch_assoc()) {
               <td><?= $commande["date"] ?></td>
               <td class="produits"><?= implode(", ", $commande["produits"]) ?></td>
               <td><?= number_format($commande["total"], 2, ',', ' ') ?></td>
+              <td><?= ucfirst($commande["statut"]) ?></td>
               <td class="actions">
                 <a href="admin_commandes.php?delete=<?= $id ?>" onclick="return confirm('Supprimer cette commande ?')">
                   <img src="images/delete-icon.png" alt="Supprimer" class="delete-icon">

@@ -11,6 +11,16 @@ $id_utilisateur = $_SESSION['id'];
 $commandes = [];
 $annulees = [];
 
+// Suppression locale d'une commande de l'historique (sans impacter la base)
+if (isset($_GET['remove'])) {
+    if (!isset($_SESSION['historique_supprime'])) {
+        $_SESSION['historique_supprime'] = [];
+    }
+    $_SESSION['historique_supprime'][] = intval($_GET['remove']);
+    header("Location: historique.php");
+    exit();
+}
+
 // Récupérer commandes valides
 $stmt = $mysqli->prepare("SELECT id AS id_commande, date_commande, 'validée' AS statut FROM commandes WHERE id_utilisateur = ? ORDER BY date_commande DESC");
 $stmt->bind_param("i", $id_utilisateur);
@@ -45,6 +55,13 @@ while ($row = $res->fetch_assoc()) {
 
 // Fusionner les deux tableaux
 $toutes_commandes = array_merge($commandes, $annulees);
+
+// Supprimer celles qui ont été masquées
+if (isset($_SESSION['historique_supprime'])) {
+    $toutes_commandes = array_filter($toutes_commandes, function($cmd) {
+        return !in_array($cmd['id_commande'], $_SESSION['historique_supprime']);
+    });
+}
 ?>
 
 <!DOCTYPE html>
@@ -90,8 +107,19 @@ $toutes_commandes = array_merge($commandes, $annulees);
             color: white;
             font-weight: 600;
         }
-        td:last-child {
-            text-align: center;
+        .delete-btn {
+            background: none;
+            border: none;
+            padding: 0;
+        }
+        .delete-btn img {
+            width: 22px;
+            height: 22px;
+            cursor: pointer;
+            transition: 0.2s ease;
+        }
+        .delete-btn img:hover {
+            transform: scale(1.2);
         }
         .empty-msg {
             text-align: center;
@@ -120,6 +148,7 @@ $toutes_commandes = array_merge($commandes, $annulees);
                     <th>Date</th>
                     <th>Total</th>
                     <th>Statut</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -129,6 +158,14 @@ $toutes_commandes = array_merge($commandes, $annulees);
                         <td><?= $commande['date_commande'] ?></td>
                         <td><?= number_format($commande['total'], 2) ?> DA</td>
                         <td><?= ucfirst($commande['statut']) ?></td>
+                        <td>
+                            <form method="get" onsubmit="return confirm('Supprimer cette commande de l’historique ?');">
+                                <input type="hidden" name="remove" value="<?= $commande['id_commande'] ?>">
+                                <button type="submit" class="delete-btn">
+                                    <img src="images/delete-icon.png" alt="Supprimer">
+                                </button>
+                            </form>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
             </tbody>
