@@ -7,8 +7,22 @@ if (!isset($_SESSION["panier"])) {
 }
 
 if (isset($_GET["add"])) {
-    $id = $_GET["add"];
-    $_SESSION["panier"][$id] = true;
+    $id = intval($_GET["add"]);
+    $_SESSION["panier"][$id] = 1;
+
+    // Insérer dans la table panier uniquement si connecté et non déjà présent
+    if (isset($_SESSION["id"])) {
+        $check = $mysqli->prepare("SELECT * FROM panier WHERE id_utilisateur = ? AND id_item = ?");
+        $check->bind_param("ii", $_SESSION["id"], $id);
+        $check->execute();
+        $res = $check->get_result();
+        if ($res->num_rows === 0) {
+            $insert = $mysqli->prepare("INSERT INTO panier (id_utilisateur, id_item, quantite) VALUES (?, ?, 1)");
+            $insert->bind_param("ii", $_SESSION["id"], $id);
+            $insert->execute();
+        }
+    }
+
     header("Location: index.php");
     exit();
 }
@@ -32,6 +46,7 @@ $stmt->bind_param("s", $param);
 $stmt->execute();
 $result = $stmt->get_result();
 ?>
+
 
 <!DOCTYPE html>
 <html lang="fr">
@@ -58,9 +73,9 @@ $result = $stmt->get_result();
       box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     }
     .topbar h2 {
- color: #7b2ff7;
-  font-size: 36px;
-  font-weight: bold;
+      color: #7b2ff7;
+      font-size: 36px;
+      font-weight: bold;
     }
     .cart-link {
       display: flex;
@@ -173,6 +188,8 @@ $result = $stmt->get_result();
       padding: 30px;
       text-align: center;
       transition: 0.3s ease;
+      cursor: pointer;
+      position: relative;
     }
     .card:hover {
       transform: translateY(-6px);
@@ -189,17 +206,12 @@ $result = $stmt->get_result();
       color: #333;
       margin-bottom: 6px;
     }
-    .card p {
-      font-size: 14px;
-      color: #666;
-      margin-bottom: 8px;
-    }
     .card .price {
       color: #27ae60;
       font-weight: 600;
       margin-bottom: 12px;
     }
-    .card a {
+    .card .add-to-cart {
       background: #7b2ff7;
       color: white;
       padding: 10px 16px;
@@ -208,24 +220,27 @@ $result = $stmt->get_result();
       font-size: 14px;
       transition: 0.2s ease;
       display: inline-block;
+      border: none;
+      cursor: pointer;
     }
-    .card a:hover {
+    .card .add-to-cart:hover {
       background: #692be3;
     }
     .logout-btn {
-  background: #692be3;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 8px;
-  text-decoration: none;
-  font-weight: 500;
-  transition: 0.3s ease;
-}
-
-.logout-btn:hover {
-  background: #692be3;
-}
-
+      background: #692be3;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: 0.3s ease;
+    }
+    .logout-btn:hover {
+      background: #692be3;
+    }
+    .card-content {
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -237,12 +252,14 @@ $result = $stmt->get_result();
       <img src="images/Buy.png" alt="Panier">
       Panier
     </a>
+    <a href="historique.php" class="cart-link">
+      Historique
+    </a>
     <a href="logout.php" class="logout-btn">Déconnexion</a>
   </div>
 </div>
 
-
-  <div class="carousel">
+<div class="carousel">
   <div class="carousel-text">
     <h3 id="carouselSubtitle">Best Deal Online on smart watches</h3>
     <h1 id="carouselTitle">SMART WEARABLE.</h1>
@@ -257,86 +274,94 @@ $result = $stmt->get_result();
   </div>
 </div>
 
+<div class="header">
+  <form method="GET">
+    <input type="text" name="search" placeholder="Recherche par nom..." value="<?= htmlspecialchars($search) ?>">
+    <select name="sort">
+      <option value="">Trier</option>
+      <option value="alpha" <?= $sort=="alpha"?"selected":"" ?>>A → Z</option>
+      <option value="prix_asc" <?= $sort=="prix_asc"?"selected":"" ?>>Prix croissant</option>
+      <option value="prix_desc" <?= $sort=="prix_desc"?"selected":"" ?>>Prix décroissant</option>
+    </select>
+    <button type="submit">Filtrer</button>
+  </form>
+</div>
 
-  <div class="header">
-    <form method="GET">
-      <input type="text" name="search" placeholder="Recherche par nom..." value="<?= htmlspecialchars($search) ?>">
-      <select name="sort">
-        <option value="">Trier</option>
-        <option value="alpha" <?= $sort=="alpha"?"selected":"" ?>>A → Z</option>
-        <option value="prix_asc" <?= $sort=="prix_asc"?"selected":"" ?>>Prix croissant</option>
-        <option value="prix_desc" <?= $sort=="prix_desc"?"selected":"" ?>>Prix décroissant</option>
-      </select>
-      <button type="submit">Filtrer</button>
-    </form>
-  </div>
-
-  <div class="grid">
-    <?php while ($item = $result->fetch_assoc()) : ?>
-      <div class="card">
+<div class="grid">
+  <?php while ($item = $result->fetch_assoc()) : ?>
+    <div class="card" onclick="window.location.href='detail.php?id=<?= $item['id'] ?>'">
+      <div class="card-content">
         <img src="images/<?= $item['image'] ?>" alt="<?= $item['nom'] ?>">
         <h3><?= htmlspecialchars($item['nom']) ?></h3>
-        <p><?= htmlspecialchars($item['description']) ?></p>
         <div class="price"><?= $item['prix'] ?> DA</div>
-        <a href="index.php?add=<?= $item['id'] ?>" onclick="return showAddEffect(this)">Ajouter au panier</a>
       </div>
-    <?php endwhile; ?>
-  </div>
+      <button class="add-to-cart" onclick="event.stopPropagation(); showAddEffect(this, <?= $item['id'] ?>)">Ajouter au panier</button>
+    </div>
+  <?php endwhile; ?>
+</div>
 
-  <script>
-  const carouselData = [
-    {
-      img: 'images/smartwatch.jpg',
-      title: 'SMART WEARABLE.',
-      subtitle: 'Best Deal Online on smart watches',
-      promo: 'UP TO 80% OFF'
-    },
-    {
-      img: 'images/headphones.jpg',
-      title: 'WIRELESS SOUND.',
-      subtitle: 'Top quality headphones just for you',
-      promo: 'UP TO 60% OFF'
-    },
-    {
-      img: 'images/shoes.jpg',
-      title: 'NIKE SNEAKERS.',
-      subtitle: 'Run faster, look cooler.',
-      promo: 'UP TO 50% OFF'
-    }
-  ];
-
-  let currentIndex = 0;
-
-  function updateCarousel() {
-    const data = carouselData[currentIndex];
-    document.getElementById('carouselImage').src = data.img;
-    document.getElementById('carouselTitle').innerText = data.title;
-    document.getElementById('carouselSubtitle').innerText = data.subtitle;
-    document.getElementById('carouselPromo').innerText = data.promo;
+<script>
+const carouselData = [
+  {
+    img: 'images/smartwatch.jpg',
+    title: 'SMART WEARABLE.',
+    subtitle: 'Best Deal Online on smart watches',
+    promo: 'UP TO 80% OFF'
+  },
+  {
+    img: 'images/headphones.jpg',
+    title: 'WIRELESS SOUND.',
+    subtitle: 'Top quality headphones just for you',
+    promo: 'UP TO 60% OFF'
+  },
+  {
+    img: 'images/shoes.jpg',
+    title: 'NIKE SNEAKERS.',
+    subtitle: 'Run faster, look cooler.',
+    promo: 'UP TO 50% OFF'
   }
+];
 
-  function changeImage(direction) {
-    currentIndex = (currentIndex + direction + carouselData.length) % carouselData.length;
-    updateCarousel();
-  }
+let currentIndex = 0;
 
-  setInterval(() => changeImage(1), 5000);
+function updateCarousel() {
+  const data = carouselData[currentIndex];
+  document.getElementById('carouselImage').src = data.img;
+  document.getElementById('carouselTitle').innerText = data.title;
+  document.getElementById('carouselSubtitle').innerText = data.subtitle;
+  document.getElementById('carouselPromo').innerText = data.promo;
+}
 
-  function showAddEffect(btn) {
-    btn.innerText = "✔️ Ajouté !";
-    btn.style.backgroundColor = "#28a745";
-    btn.style.transform = "scale(1.1)";
-    btn.style.transition = "all 0.3s ease";
-    setTimeout(() => {
-      window.location.href = btn.href;
-    }, 500);
-    return false;
-  }
+function changeImage(direction) {
+  currentIndex = (currentIndex + direction + carouselData.length) % carouselData.length;
+  updateCarousel();
+}
 
-  // Met à jour au chargement
-  window.onload = updateCarousel;
+setInterval(() => changeImage(1), 5000);
+
+function showAddEffect(btn, id) {
+  btn.innerText = " Ajouté !";
+  btn.style.backgroundColor = "#28a745";
+  btn.style.transform = "scale(1.1)";
+  btn.style.transition = "all 0.3s ease";
+  
+  // Envoyer une requête pour ajouter au panier sans recharger la page
+  fetch(`index.php?add=${id}`)
+    .then(() => {
+      setTimeout(() => {
+        btn.innerText = "Ajouter au panier";
+        btn.style.backgroundColor = "#7b2ff7";
+        btn.style.transform = "scale(1)";
+      }, 1000);
+    });
+  
+  // Empêcher la navigation vers la page de détail
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+window.onload = updateCarousel;
 </script>
-
 
 </body>
 </html>

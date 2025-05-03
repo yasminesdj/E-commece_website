@@ -8,23 +8,29 @@ if (!isset($_SESSION["role"]) || $_SESSION["role"] !== "admin") {
     exit();
 }
 
-// Supprimer une commande si demandée
+// Supprimer une commande si demandée (les triggers s'occupent du reste)
 if (isset($_GET['delete'])) {
-    $id = intval($_GET['delete']);
-    $mysqli->query("DELETE FROM details_commande WHERE id_commande = $id");
-    $mysqli->query("DELETE FROM commandes WHERE id = $id");
-    header("Location: admin_commandes.php");
-    exit();
+  $id = intval($_GET['delete']);
+
+  // Supprime uniquement la commande : les détails seront supprimés automatiquement (ON DELETE CASCADE)
+  $stmt = $mysqli->prepare("DELETE FROM commandes WHERE id = ?");
+  $stmt->bind_param("i", $id);
+  $stmt->execute();
+
+  header("Location: admin_commandes.php");
+  exit();
 }
 
-// Récupérer les commandes avec jointure utilisateur + items
+
+// Récupérer les commandes avec jointure utilisateur + details + items
 $query = "
-SELECT commandes.id AS id_commande, utilisateurs.nom AS client, commandes.date_commande, items.nom AS produit, items.prix
-FROM commandes
-JOIN utilisateurs ON commandes.id_utilisateur = utilisateurs.id
-JOIN details_commande ON commandes.id = details_commande.id_commande
-JOIN items ON details_commande.id_item = items.id
-ORDER BY commandes.date_commande DESC
+SELECT c.id AS id_commande, u.nom AS client, c.date_commande,
+       i.nom AS produit, dc.quantite, dc.prix_unitaire
+FROM commandes c
+JOIN utilisateurs u ON c.id_utilisateur = u.id
+JOIN details_commande dc ON dc.id_commande = c.id
+JOIN items i ON dc.id_item = i.id
+ORDER BY c.date_commande DESC
 ";
 
 $result = $mysqli->query($query);
@@ -41,8 +47,8 @@ while ($row = $result->fetch_assoc()) {
             "total" => 0
         ];
     }
-    $commandes[$id]["produits"][] = $row["produit"];
-    $commandes[$id]["total"] += $row["prix"];
+    $commandes[$id]["produits"][] = $row["produit"] . " (x" . $row["quantite"] . ")";
+    $commandes[$id]["total"] += $row["quantite"] * $row["prix_unitaire"];
 }
 ?>
 

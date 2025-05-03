@@ -2,34 +2,49 @@
 session_start();
 include("connexion.php");
 
-// Vérifie que l'utilisateur est connecté
+// Vérification utilisateur connecté
 if (!isset($_SESSION["id"])) {
     header("Location: login.php");
     exit();
 }
 
-// Vérifie que le panier contient des articles
+// Vérification panier
 if (empty($_SESSION["panier"])) {
-    echo "<h2>Votre panier est vide.</h2>";
-    echo "<a href='index.php'>Retour à la boutique</a>";
+    $_SESSION['error'] = "Votre panier est vide";
+    header("Location: panier.php");
     exit();
 }
 
-// Insérer la commande
-$id_user = $_SESSION["id"];
-$mysqli->query("INSERT INTO commandes (id_utilisateur) VALUES ($id_user)");
-$id_commande = $mysqli->insert_id;
+$id_utilisateur = $_SESSION["id"];
 
-// Insérer les détails de la commande
-foreach ($_SESSION["panier"] as $id_item => $val) {
-    $stmt = $mysqli->prepare("INSERT INTO details_commande (id_commande, id_item) VALUES (?, ?)");
-    $stmt->bind_param("ii", $id_commande, $id_item);
+try {
+    // Étape 1 : Vider les anciennes données du panier (sécurité)
+    $mysqli->query("DELETE FROM panier WHERE id_utilisateur = $id_utilisateur");
+
+    // Étape 2 : Insérer les articles de la session dans la table `panier`
+    foreach ($_SESSION["panier"] as $id_item => $quantite) {
+        $stmt = $mysqli->prepare("INSERT INTO panier (id_utilisateur, id_item, quantite) VALUES (?, ?, ?)");
+        $stmt->bind_param("iii", $id_utilisateur, $id_item, $quantite);
+        $stmt->execute();
+    }
+
+    // Étape 3 : Appeler la procédure stockée
+    $stmt = $mysqli->prepare("CALL proc_finaliser_commande(?)");
+    $stmt->bind_param("i", $id_utilisateur);
     $stmt->execute();
-}
+    $stmt->close();
 
-// Vider le panier
-$_SESSION["panier"] = [];
+    // Étape 4 : Vider le panier en session
+    $_SESSION["panier"] = [];
+    $_SESSION['success'] = "Commande validée avec succès !";
+
+} catch (mysqli_sql_exception $e) {
+    $_SESSION['error'] = "Erreur lors de la commande : " . $e->getMessage();
+    header("Location: panier.php");
+    exit();
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>

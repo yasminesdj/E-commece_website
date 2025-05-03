@@ -6,8 +6,38 @@ if (!isset($_SESSION["panier"])) {
     $_SESSION["panier"] = [];
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$id_user = $_SESSION["id"] ?? null;
+
+// Synchroniser le panier avec la BDD si connecté
+foreach ($_SESSION["panier"] as $id => $quantite) {
+    if ($quantite === true) {
+        $_SESSION["panier"]["$id"] = 1;
+        $quantite = 1;
+    }
+
+    if ($id_user) {
+        $stmt = $mysqli->prepare("SELECT * FROM panier WHERE id_utilisateur = ? AND id_item = ?");
+        $stmt->bind_param("ii", $id_user, $id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        if ($res->num_rows === 0) {
+            $stmt = $mysqli->prepare("INSERT INTO panier (id_utilisateur, id_item, quantite) VALUES (?, ?, ?)");
+            $stmt->bind_param("iii", $id_user, $id, $quantite);
+            $stmt->execute();
+        } else {
+            $stmt = $mysqli->prepare("UPDATE panier SET quantite = ? WHERE id_utilisateur = ? AND id_item = ?");
+            $stmt->bind_param("iii", $quantite, $id_user, $id);
+            $stmt->execute();
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quantite'])) {
     foreach ($_POST['quantite'] as $id => $quantite) {
+        $quantite = intval($quantite);
+        if ($quantite < 1) $quantite = 1;
+
         $stmt = $mysqli->prepare("SELECT stock FROM items WHERE id = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
@@ -18,14 +48,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: panier.php");
             exit();
         } else {
-            $_SESSION["panier"]["$id"] = intval($quantite);
+            $_SESSION["panier"][$id] = $quantite;
+
+            if ($id_user) {
+                $stmt = $mysqli->prepare("UPDATE panier SET quantite = ? WHERE id_utilisateur = ? AND id_item = ?");
+                $stmt->bind_param("iii", $quantite, $id_user, $id);
+                $stmt->execute();
+            }
         }
     }
+    header("Location: panier.php");
+    exit();
 }
 
 if (isset($_GET["remove"])) {
     $id = $_GET["remove"];
     unset($_SESSION["panier"]["$id"]);
+
+    if ($id_user) {
+        $stmt = $mysqli->prepare("DELETE FROM panier WHERE id_utilisateur = ? AND id_item = ?");
+        $stmt->bind_param("ii", $id_user, $id);
+        $stmt->execute();
+    }
+
     header("Location: panier.php");
     exit();
 }
@@ -56,7 +101,8 @@ if (!empty($ids)) {
   <title>Mon Panier - Shopora</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    * { font-family: 'Poppins', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
+   
+   * { font-family: 'Poppins', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #f4f6f9; padding: 30px; }
     .container { max-width: 900px; margin: auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
     h2 { text-align: center; color: #7b2ff7; margin-bottom: 30px; }
@@ -84,6 +130,7 @@ if (!empty($ids)) {
       padding: 5px;
       border-radius: 6px;
       border: 1px solid #ccc;
+      cursor: pointer;
     }
     .remove-btn {
       background: #eee;
@@ -137,51 +184,82 @@ if (!empty($ids)) {
       color: red;
       margin-bottom: 15px;
     }
+    .item-total {
+      margin-left: 15px;
+      font-weight: bold;
+      color: #333;
+      min-width: 100px;
+      text-align: right;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-  <h2>
-  <img src="images/Buy.png" alt="Panier" style="width: 36px; height: 36px; vertical-align: middle; margin-right: 8px;">
-  Mon panier
-</h2>
+    <h2>
+      <img src="images/Buy.png" alt="Panier" style="width: 36px; height: 36px; vertical-align: middle; margin-right: 8px;">
+      Mon panier
+    </h2>
 
-  <?php if (isset($_SESSION['error'])) { echo "<div class='error-msg'>" . $_SESSION['error'] . "</div>"; unset($_SESSION['error']); } ?>
+    <?php if (isset($_SESSION['error'])): ?>
+      <div class='error-msg'><?= $_SESSION['error'] ?></div>
+      <?php unset($_SESSION['error']); ?>
+    <?php endif; ?>
 
-  <?php if (empty($articles)) : ?>
+    <?php if (empty($articles)): ?>
       <p style="text-align:center; color: #555;">Votre panier est vide.</p>
-  <?php else: ?>
-    <form method="POST">
-      <?php foreach ($articles as $a): ?>
-        <div class="item">
-          <img src="images/<?= $a['image'] ?>" alt="<?= $a['nom'] ?>">
-          <div class="info">
-            <h3><?= $a['nom'] ?></h3>
-            <p><?= $a['description'] ?></p>
-            <div class="price"><?= $a['prix'] ?> DA</div>
+    <?php else: ?>
+      <form id="cartForm" method="POST">
+        <?php foreach ($articles as $a): ?>
+          <div class="item">
+            <img src="images/<?= $a['image'] ?>" alt="<?= $a['nom'] ?>">
+            <div class="info">
+              <h3><?= htmlspecialchars($a['nom']) ?></h3>
+              <p><?= htmlspecialchars($a['description']) ?></p>
+              <div class="price"><?= number_format($a['prix'], 2) ?> DA</div>
+            </div>
+            <select name="quantite[<?= $a['id'] ?>]" onchange="updateCart()" class="quantity-select">
+              <?php for ($i = 1; $i <= $a['stock']; $i++): ?>
+                <option value="<?= $i ?>" <?= ($i == $a['quantite']) ? 'selected' : '' ?>><?= $i ?></option>
+              <?php endfor; ?>
+            </select>
+            <div class="item-total">
+              <?= number_format($a['prix'] * $a['quantite'], 2) ?> DA
+            </div>
+            <a class="remove-btn" href="panier.php?remove=<?= $a['id'] ?>">Retirer</a>
           </div>
-          <select name="quantite[<?= $a['id'] ?>]">
-            <?php for ($i = 1; $i <= $a['stock']; $i++): ?>
-              <option value="<?= $i ?>" <?= ($i == $a['quantite']) ? 'selected' : '' ?>><?= $i ?></option>
-            <?php endfor; ?>
-          </select>
-          <a class="remove-btn" href="panier.php?remove=<?= $a['id'] ?>">Retirer</a>
+        <?php endforeach; ?>
+
+        <div class="total" id="grandTotal">
+          Total : <?= number_format($total, 2) ?> DA
         </div>
-      <?php endforeach; ?>
+      </form>
 
-      <div class="total">
-        Total : <?= number_format($total, 2) ?> DA
-      </div>
+      <form method="POST" action="valider_commande.php">
+        <button type="submit" class="validate-btn"> Valider la commande</button>
+      </form>
+    <?php endif; ?>
 
-      <button type="submit" class="validate-btn"> Mettre à jour les quantités</button>
-    </form>
-
-    <form method="POST" action="valider_commande.php">
-      <button type="submit" class="validate-btn">✅ Valider la commande</button>
-    </form>
-  <?php endif; ?>
-
-  <a class="back" href="index.php">← Retour à la boutique</a>
+    <a class="back" href="index.php">← Retour à la boutique</a>
   </div>
+
+  <script>
+    function updateCart() {
+      const items = document.querySelectorAll('.item');
+      let grandTotal = 0;
+      
+      items.forEach(item => {
+        const select = item.querySelector('.quantity-select');
+        const price = parseFloat(item.querySelector('.price').textContent);
+        const quantity = parseInt(select.value);
+        const itemTotal = price * quantity;
+        
+        item.querySelector('.item-total').textContent = itemTotal.toFixed(2) + ' DA';
+        grandTotal += itemTotal;
+      });
+      
+      document.getElementById('grandTotal').textContent = 'Total : ' + grandTotal.toFixed(2) + ' DA';
+      document.getElementById('cartForm').submit();
+    }
+  </script>
 </body>
 </html>
