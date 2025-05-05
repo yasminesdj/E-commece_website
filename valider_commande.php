@@ -21,30 +21,31 @@ try {
     // Commencer une transaction
     $mysqli->begin_transaction();
 
-    // Étape 1 : Vider les anciennes données du panier
+    // Vérification des stocks
+    foreach ($_SESSION["panier"] as $id_item => $quantite) {
+        $stmt = $mysqli->prepare("SELECT stock FROM items WHERE id = ? FOR UPDATE");
+        $stmt->bind_param("i", $id_item);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        
+        if ($quantite > $result['stock']) {
+            throw new Exception("Stock insuffisant pour l'article ID $id_item (Demandé: $quantite, Disponible: ".$result['stock'].")");
+        }
+    }
+
+    // Vider le panier existant
     $stmt = $mysqli->prepare("DELETE FROM panier WHERE id_utilisateur = ?");
     $stmt->bind_param("i", $id_utilisateur);
     $stmt->execute();
 
-    // Étape 2 : Vérifier les stocks avant insertion
+    // Insérer les articles dans le panier
     foreach ($_SESSION["panier"] as $id_item => $quantite) {
-        // Vérifier que le stock est suffisant
-        $check = $mysqli->prepare("SELECT stock FROM items WHERE id = ?");
-        $check->bind_param("i", $id_item);
-        $check->execute();
-        $result = $check->get_result()->fetch_assoc();
-        
-        if ($result['stock'] < $quantite) {
-            throw new Exception("Stock insuffisant pour l'article ID $id_item");
-        }
-
-        // Insérer dans le panier
         $stmt = $mysqli->prepare("INSERT INTO panier (id_utilisateur, id_item, quantite) VALUES (?, ?, ?)");
         $stmt->bind_param("iii", $id_utilisateur, $id_item, $quantite);
         $stmt->execute();
     }
 
-    // Étape 3 : Appeler la procédure stockée
+    // Appeler la procédure stockée
     $stmt = $mysqli->prepare("CALL proc_finaliser_commande(?)");
     $stmt->bind_param("i", $id_utilisateur);
     $stmt->execute();
@@ -53,18 +54,29 @@ try {
     // Valider la transaction
     $mysqli->commit();
 
-    // Étape 4 : Vider le panier en session
+    // Vider le panier en session
     $_SESSION["panier"] = [];
     $_SESSION['success'] = "Commande validée avec succès !";
 
-} catch (Exception $e) {
-    // Annuler la transaction en cas d'erreur
+} catch (mysqli_sql_exception $e) {
     $mysqli->rollback();
-    $_SESSION['error'] = "Erreur lors de la commande : " . $e->getMessage();
+    
+    // Gestion spécifique des erreurs de trigger
+    if (strpos($e->getMessage(), 'Stock insuffisant') !== false) {
+        $_SESSION['error'] = "❌ Erreur : ".$e->getMessage();
+    } else {
+        $_SESSION['error'] = "❌ Erreur technique lors de la validation de la commande";
+    }
+    header("Location: panier.php");
+    exit();
+} catch (Exception $e) {
+    $mysqli->rollback();
+    $_SESSION['error'] = "❌ Erreur : ".$e->getMessage();
     header("Location: panier.php");
     exit();
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -95,16 +107,16 @@ try {
       max-width: 500px;
     }
     .confirmation-box h2 {
-      color: #27ae60;
+      color: #28a745;
       font-size: 24px;
       margin-bottom: 10px;
     }
     .confirmation-box p {
       font-size: 16px;
       color: #555;
+      margin-bottom: 20px;
     }
     .confirmation-box a {
-      margin-top: 30px;
       display: inline-block;
       padding: 12px 24px;
       background: #7b2ff7;
@@ -116,20 +128,31 @@ try {
     .confirmation-box a:hover {
       background: #692be3;
     }
-    .icon {
+    .icon-success {
       font-size: 48px;
+      color: #28a745;
       margin-bottom: 15px;
+    }
+    .order-details {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      text-align: left;
     }
   </style>
 </head>
 <body>
-
   <div class="confirmation-box">
-    <div class="icon">🎉</div>
+    <div class="icon-success">✓</div>
     <h2>Commande validée avec succès !</h2>
-    <p>Merci pour votre achat chez <strong>Shopora</strong>.<br>Nous espérons vous revoir bientôt 😊</p>
+    <p>Merci pour votre achat chez <strong>Shopora</strong>.</p>
+    
+    <div class="order-details">
+      <p>Nous espérons vous revoir bientôt 😊</p>
+    </div>
+    
     <a href="index.php">← Retour à la boutique</a>
   </div>
-
 </body>
 </html>

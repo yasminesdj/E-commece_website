@@ -176,7 +176,7 @@ if (isset($_SESSION['commandes_supprimees'])) {
 </head>
 <body>
 <div class="container">
-    <h1>📜 Historique de vos commandes</h1>
+    <h1> Historique de vos commandes</h1>
 
     <?php if (isset($_SESSION['success'])): ?>
         <div class="success-msg"><?= $_SESSION['success'] ?></div>

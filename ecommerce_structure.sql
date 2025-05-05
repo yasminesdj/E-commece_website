@@ -185,14 +185,18 @@ DELIMITER ;
 -- Trigger 4 : Garder trace des commandes annulées
 DELIMITER $$
 
+
 CREATE TRIGGER trg_log_cancelled_order
-BEFORE DELETE ON commandes
+AFTER UPDATE ON commandes
 FOR EACH ROW
 BEGIN
-    INSERT INTO historique_annulation(id_commande, id_item, quantite, date_annulation)
-    SELECT OLD.id, dc.id_item, dc.quantite, NOW()
-    FROM details_commande dc
-    WHERE dc.id_commande = OLD.id;
+    -- Se déclenche seulement quand le statut passe à 'annulée'
+    IF NEW.statut = 'annulée' AND (OLD.statut IS NULL OR OLD.statut != 'annulée') THEN
+        INSERT INTO historique_annulation(id_commande, id_item, quantite, date_annulation)
+        SELECT NEW.id, dc.id_item, dc.quantite, NOW()
+        FROM details_commande dc
+        WHERE dc.id_commande = NEW.id;
+    END IF;
 END$$
 
 DELIMITER ;
