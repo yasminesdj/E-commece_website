@@ -54,6 +54,14 @@ CREATE TABLE historique_annulation (
   date_annulation DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Création de la table `panier`
+
+CREATE TABLE panier (
+    id_utilisateur INT NOT NULL,
+    id_item INT NOT NULL,
+    quantite INT NOT NULL DEFAULT 1
+);
+
 DELIMITER $$
 
 -- Procédure 1 : Afficher les détails d’une commande
@@ -71,33 +79,49 @@ BEGIN
 END$$
 
 -- Procédure 2 : Finaliser une commande et vider le panier
+DELIMITER $$
+
 CREATE PROCEDURE proc_finaliser_commande(IN p_id_utilisateur INT)
 BEGIN
     DECLARE v_id_commande INT;
-    DECLARE v_total DECIMAL(10,2);
-
+    DECLARE v_total DECIMAL(10,2) DEFAULT 0;
+    
+    -- Désactiver temporairement les triggers
+    SET @disable_triggers = TRUE;
+    
     -- Calcul du total
     SELECT SUM(i.prix * p.quantite) INTO v_total
     FROM panier p
     JOIN items i ON i.id = p.id_item
     WHERE p.id_utilisateur = p_id_utilisateur;
-
-    -- Création de la commande
+    
+    -- Création de l'entête de commande
     INSERT INTO commandes(id_utilisateur, date_commande, total, statut)
     VALUES (p_id_utilisateur, NOW(), v_total, 'validée');
-
+    
     SET v_id_commande = LAST_INSERT_ID();
-
-    -- Insertion des détails de commande
+    
+    -- Insertion des lignes de commande (le trigger ne modifiera PAS le stock)
     INSERT INTO details_commande(id_commande, id_item, quantite, prix_unitaire)
     SELECT v_id_commande, p.id_item, p.quantite, i.prix
     FROM panier p
     JOIN items i ON i.id = p.id_item
     WHERE p.id_utilisateur = p_id_utilisateur;
-
+    
+    -- Mise à jour MANUELLE du stock (une seule fois)
+    UPDATE items i
+    JOIN panier p ON i.id = p.id_item
+    SET i.stock = i.stock - p.quantite
+    WHERE p.id_utilisateur = p_id_utilisateur;
+    
     -- Vider le panier
     DELETE FROM panier WHERE id_utilisateur = p_id_utilisateur;
+    
+    -- Réactiver les triggers
+    SET @disable_triggers = NULL;
 END$$
+
+DELIMITER ;
 
 -- Procédure 3 : Historique des commandes d’un client
 CREATE PROCEDURE proc_historique_commandes(IN p_id_utilisateur INT)
@@ -109,15 +133,21 @@ BEGIN
 END$$
 
 -- Trigger 1 : Mise à jour du stock après validation d’une commande
+DELIMITER $$
+
 CREATE TRIGGER trg_update_stock_after_insert
 AFTER INSERT ON details_commande
 FOR EACH ROW
 BEGIN
-    UPDATE items
-    SET stock = stock - NEW.quantite
-    WHERE id = NEW.id_item;
+    -- Ne s'exécute QUE si la variable de contrôle n'est pas définie
+    IF @disable_triggers IS NULL THEN
+        UPDATE items
+        SET stock = stock - NEW.quantite
+        WHERE id = NEW.id_item;
+    END IF;
 END$$
 
+DELIMITER ;
 -- Trigger 2 : Empêcher l’insertion si la quantité dépasse le stock
 CREATE TRIGGER trg_prevent_insert_if_stock_insufficient
 BEFORE INSERT ON details_commande
@@ -135,11 +165,23 @@ CREATE TRIGGER trg_restore_stock_after_delete
 AFTER DELETE ON details_commande
 FOR EACH ROW
 BEGIN
-    UPDATE items
-    SET stock = stock + OLD.quantite
-    WHERE id = OLD.id_item;
+    -- Ne restaurer le stock que si la commande n'est pas déjà marquée comme annulée
+    IF NOT EXISTS (
+        SELECT 1 FROM commandes 
+        WHERE id = OLD.id_commande 
+        AND statut = 'annulée'
+    ) THEN
+        UPDATE items 
+        SET stock = stock + OLD.quantite 
+        WHERE id = OLD.id_item;
+        
+        -- Journaliser l'annulation
+        INSERT INTO historique_annulation(id_commande, id_item, quantite)
+        VALUES (OLD.id_commande, OLD.id_item, OLD.quantite);
+    END IF;
 END$$
 
+DELIMITER ;
 -- Trigger 4 : Garder trace des commandes annulées
 DELIMITER $$
 
@@ -154,15 +196,6 @@ BEGIN
 END$$
 
 DELIMITER ;
-
--- ✅ 1. Création de la table `panier`
-DROP TABLE IF EXISTS panier;
-CREATE TABLE panier (
-    id_utilisateur INT NOT NULL,
-    id_item INT NOT NULL,
-    quantite INT NOT NULL DEFAULT 1
-);
-
 
 
 DELIMITER $$
@@ -220,17 +253,3 @@ BEGIN
   COMMIT;
 END $$
 
-DELIMITER ;
-
-
-DELIMITER $$
-
-CREATE TRIGGER trg_log_cancelled_order
-AFTER DELETE ON details_commande
-FOR EACH ROW
-BEGIN
-    INSERT INTO historique_annulation(id_commande, id_item, quantite, date_annulation)
-    VALUES (OLD.id_commande, OLD.id_item, OLD.quantite, NOW());
-END$$
-
-DELIMITER ;

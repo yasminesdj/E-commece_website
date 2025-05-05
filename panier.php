@@ -8,12 +8,7 @@ if (!isset($_SESSION["panier"])) {
 
 $id_user = $_SESSION["id"] ?? null;
 
-// Synchroniser le panier avec la BDD si connecté
-foreach ($_SESSION["panier"] as $id => $quantite) {
-    if ($quantite === true) {
-        $_SESSION["panier"]["$id"] = 1;
-        $quantite = 1;
-    }
+
 
     if ($id_user) {
         $stmt = $mysqli->prepare("SELECT * FROM panier WHERE id_utilisateur = ? AND id_item = ?");
@@ -31,7 +26,7 @@ foreach ($_SESSION["panier"] as $id => $quantite) {
             $stmt->execute();
         }
     }
-}
+
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quantite'])) {
     foreach ($_POST['quantite'] as $id => $quantite) {

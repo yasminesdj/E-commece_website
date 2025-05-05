@@ -18,11 +18,27 @@ if (empty($_SESSION["panier"])) {
 $id_utilisateur = $_SESSION["id"];
 
 try {
-    // Étape 1 : Vider les anciennes données du panier (sécurité)
-    $mysqli->query("DELETE FROM panier WHERE id_utilisateur = $id_utilisateur");
+    // Commencer une transaction
+    $mysqli->begin_transaction();
 
-    // Étape 2 : Insérer les articles de la session dans la table `panier`
+    // Étape 1 : Vider les anciennes données du panier
+    $stmt = $mysqli->prepare("DELETE FROM panier WHERE id_utilisateur = ?");
+    $stmt->bind_param("i", $id_utilisateur);
+    $stmt->execute();
+
+    // Étape 2 : Vérifier les stocks avant insertion
     foreach ($_SESSION["panier"] as $id_item => $quantite) {
+        // Vérifier que le stock est suffisant
+        $check = $mysqli->prepare("SELECT stock FROM items WHERE id = ?");
+        $check->bind_param("i", $id_item);
+        $check->execute();
+        $result = $check->get_result()->fetch_assoc();
+        
+        if ($result['stock'] < $quantite) {
+            throw new Exception("Stock insuffisant pour l'article ID $id_item");
+        }
+
+        // Insérer dans le panier
         $stmt = $mysqli->prepare("INSERT INTO panier (id_utilisateur, id_item, quantite) VALUES (?, ?, ?)");
         $stmt->bind_param("iii", $id_utilisateur, $id_item, $quantite);
         $stmt->execute();
@@ -34,17 +50,21 @@ try {
     $stmt->execute();
     $stmt->close();
 
+    // Valider la transaction
+    $mysqli->commit();
+
     // Étape 4 : Vider le panier en session
     $_SESSION["panier"] = [];
     $_SESSION['success'] = "Commande validée avec succès !";
 
-} catch (mysqli_sql_exception $e) {
+} catch (Exception $e) {
+    // Annuler la transaction en cas d'erreur
+    $mysqli->rollback();
     $_SESSION['error'] = "Erreur lors de la commande : " . $e->getMessage();
     header("Location: panier.php");
     exit();
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>

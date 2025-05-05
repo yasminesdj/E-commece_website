@@ -9,57 +9,75 @@ if (!isset($_SESSION['id'])) {
 
 $id_utilisateur = $_SESSION['id'];
 $commandes = [];
-$annulees = [];
 
-// Suppression locale d'une commande de l'historique (sans impacter la base)
-if (isset($_GET['remove'])) {
-    if (!isset($_SESSION['historique_supprime'])) {
-        $_SESSION['historique_supprime'] = [];
+// Récupérer toutes les commandes de l'utilisateur
+$stmt = $mysqli->prepare("
+    SELECT c.id AS id_commande, c.date_commande, c.statut, 
+           SUM(dc.quantite * dc.prix_unitaire) AS total
+    FROM commandes c
+    LEFT JOIN details_commande dc ON c.id = dc.id_commande
+    WHERE c.id_utilisateur = ?
+    GROUP BY c.id
+    ORDER BY c.date_commande DESC
+");
+$stmt->bind_param("i", $id_utilisateur);
+$stmt->execute();
+$result = $stmt->get_result();
+
+while ($row = $result->fetch_assoc()) {
+    $commandes[] = $row;
+}
+
+// Gestion de l'annulation de commande
+if (isset($_GET['annuler'])) {
+    $id_commande = intval($_GET['annuler']);
+    
+    try {
+        // Démarrer une transaction
+        $mysqli->begin_transaction();
+
+        // 1. D'abord marquer la commande comme annulée
+        $stmt = $mysqli->prepare("UPDATE commandes SET statut = 'annulée' WHERE id = ? AND id_utilisateur = ?");
+        $stmt->bind_param("ii", $id_commande, $id_utilisateur);
+        $stmt->execute();
+        
+        if ($stmt->affected_rows === 0) {
+            throw new Exception("Commande introuvable ou ne vous appartenant pas");
+        }
+
+        // 2. Ensuite supprimer les détails (le trigger vérifiera le statut)
+        $stmt = $mysqli->prepare("DELETE FROM details_commande WHERE id_commande = ?");
+        $stmt->bind_param("i", $id_commande);
+        $stmt->execute();
+
+        // Valider la transaction
+        $mysqli->commit();
+        
+        $_SESSION['success'] = "Commande #$id_commande annulée avec succès";
+    } catch (Exception $e) {
+        $mysqli->rollback();
+        $_SESSION['error'] = "Erreur lors de l'annulation : " . $e->getMessage();
     }
-    $_SESSION['historique_supprime'][] = intval($_GET['remove']);
+    
     header("Location: historique.php");
     exit();
 }
 
-// Récupérer commandes valides
-$stmt = $mysqli->prepare("SELECT id AS id_commande, date_commande, 'validée' AS statut FROM commandes WHERE id_utilisateur = ? ORDER BY date_commande DESC");
-$stmt->bind_param("i", $id_utilisateur);
-$stmt->execute();
-$result = $stmt->get_result();
-while ($row = $result->fetch_assoc()) {
-    $stmt_total = $mysqli->prepare("SELECT SUM(quantite * prix_unitaire) AS total FROM details_commande WHERE id_commande = ?");
-    $stmt_total->bind_param("i", $row['id_commande']);
-    $stmt_total->execute();
-    $res_total = $stmt_total->get_result()->fetch_assoc();
-    $row['total'] = $res_total['total'] ?? 0;
-    $commandes[] = $row;
+// Gestion de la suppression visuelle
+if (isset($_GET['supprimer'])) {
+    if (!isset($_SESSION['commandes_supprimees'])) {
+        $_SESSION['commandes_supprimees'] = [];
+    }
+    $_SESSION['commandes_supprimees'][] = intval($_GET['supprimer']);
+    $_SESSION['success'] = "Commande masquée de votre historique";
+    header("Location: historique.php");
+    exit();
 }
 
-// Récupérer commandes annulées
-$query = "
-SELECT ha.id_commande, MAX(ha.date_annulation) as date_commande, 'annulée' AS statut, SUM(ha.quantite * i.prix) AS total
-FROM historique_annulation ha
-JOIN items i ON ha.id_item = i.id
-JOIN commandes c ON c.id = ha.id_commande
-WHERE c.id_utilisateur = ?
-GROUP BY ha.id_commande
-ORDER BY date_commande DESC
-";
-$stmt = $mysqli->prepare($query);
-$stmt->bind_param("i", $id_utilisateur);
-$stmt->execute();
-$res = $stmt->get_result();
-while ($row = $res->fetch_assoc()) {
-    $annulees[] = $row;
-}
-
-// Fusionner les deux tableaux
-$toutes_commandes = array_merge($commandes, $annulees);
-
-// Supprimer celles qui ont été masquées
-if (isset($_SESSION['historique_supprime'])) {
-    $toutes_commandes = array_filter($toutes_commandes, function($cmd) {
-        return !in_array($cmd['id_commande'], $_SESSION['historique_supprime']);
+// Filtrer les commandes supprimées visuellement
+if (isset($_SESSION['commandes_supprimees'])) {
+    $commandes = array_filter($commandes, function($cmd) {
+        return !in_array($cmd['id_commande'], $_SESSION['commandes_supprimees']);
     });
 }
 ?>
@@ -107,18 +125,18 @@ if (isset($_SESSION['historique_supprime'])) {
             color: white;
             font-weight: 600;
         }
-        .delete-btn {
+        .action-btn {
             background: none;
             border: none;
             padding: 0;
+            cursor: pointer;
         }
-        .delete-btn img {
+        .action-btn img {
             width: 22px;
             height: 22px;
-            cursor: pointer;
             transition: 0.2s ease;
         }
-        .delete-btn img:hover {
+        .action-btn img:hover {
             transform: scale(1.2);
         }
         .empty-msg {
@@ -134,13 +152,43 @@ if (isset($_SESSION['historique_supprime'])) {
             color: #7b2ff7;
             font-weight: 600;
         }
+        .status-validée {
+            color: #28a745;
+        }
+        .status-annulée {
+            color: #dc3545;
+        }
+        .success-msg, .error-msg {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .success-msg {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error-msg {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
     </style>
 </head>
 <body>
 <div class="container">
     <h1>📜 Historique de vos commandes</h1>
 
-    <?php if (count($toutes_commandes) > 0): ?>
+    <?php if (isset($_SESSION['success'])): ?>
+        <div class="success-msg"><?= $_SESSION['success'] ?></div>
+        <?php unset($_SESSION['success']); ?>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['error'])): ?>
+        <div class="error-msg"><?= $_SESSION['error'] ?></div>
+        <?php unset($_SESSION['error']); ?>
+    <?php endif; ?>
+
+    <?php if (count($commandes) > 0): ?>
         <table>
             <thead>
                 <tr>
@@ -152,16 +200,26 @@ if (isset($_SESSION['historique_supprime'])) {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($toutes_commandes as $commande): ?>
+                <?php foreach ($commandes as $commande): ?>
                     <tr>
                         <td><?= $commande['id_commande'] ?></td>
-                        <td><?= $commande['date_commande'] ?></td>
+                        <td><?= date('d/m/Y H:i', strtotime($commande['date_commande'])) ?></td>
                         <td><?= number_format($commande['total'], 2) ?> DA</td>
-                        <td><?= ucfirst($commande['statut']) ?></td>
+                        <td class="status-<?= $commande['statut'] ?>"><?= ucfirst($commande['statut']) ?></td>
                         <td>
-                            <form method="get" onsubmit="return confirm('Supprimer cette commande de l’historique ?');">
-                                <input type="hidden" name="remove" value="<?= $commande['id_commande'] ?>">
-                                <button type="submit" class="delete-btn">
+                            <form method="get" onsubmit="
+                                if('<?= $commande['statut'] ?>' === 'validée') {
+                                    return confirm('Voulez-vous annuler cette commande ? Le stock sera réapprovisionné.');
+                                } else {
+                                    return confirm('Supprimer cette commande de votre historique ?');
+                                }
+                            ">
+                                <?php if ($commande['statut'] === 'validée'): ?>
+                                    <input type="hidden" name="annuler" value="<?= $commande['id_commande'] ?>">
+                                <?php else: ?>
+                                    <input type="hidden" name="supprimer" value="<?= $commande['id_commande'] ?>">
+                                <?php endif; ?>
+                                <button type="submit" class="action-btn" title="<?= $commande['statut'] === 'validée' ? 'Annuler la commande' : 'Supprimer de l\'historique' ?>">
                                     <img src="images/delete-icon.png" alt="Supprimer">
                                 </button>
                             </form>
