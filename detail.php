@@ -104,7 +104,7 @@ if (isset($_GET["add"])) {
       margin-bottom: 25px;
     }
     .info .btn-container {
-      margin-top: 30px;
+      margin-top: 60px;
     }
     .info a {
       background: #7b2ff7;
@@ -139,6 +139,7 @@ if (isset($_GET["add"])) {
       <h1><?= htmlspecialchars($item['nom']) ?></h1>
       <p><?= htmlspecialchars($item['description']) ?></p>
       <div class="price"><?= $item['prix'] ?> DA</div>
+      <div class="stock-info">Stock disponible: <?=  $item['stock'] ?></div>
     </div>
     <div class="btn-container">
       <a href="?id=<?= $item['id'] ?>&add=<?= $item['id'] ?>" id="addBtn" class="<?= $ajoute ? 'added' : '' ?>">Ajouter au panier</a>

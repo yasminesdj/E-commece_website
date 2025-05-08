@@ -261,7 +261,6 @@ $items = $mysqli->query("SELECT * FROM items");
     <div class="card" data-id="<?= $item['id'] ?>">
       <img src="images/<?= $item['image'] ?>" alt="<?= $item['nom'] ?>">
       <h3><?= htmlspecialchars($item['nom']) ?></h3>
-      <p><?= htmlspecialchars($item['description']) ?></p>
       <div class="price"><?= $item['prix'] ?> DA</div>
       <div class="btn-actions">
         <button class="btn-modifier" onclick="window.location.href='admin.php?edit=<?= $item['id'] ?>'">Modifier</button>
