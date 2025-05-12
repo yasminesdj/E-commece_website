@@ -93,13 +93,58 @@ if (isset($_SESSION['commandes_supprimees'])) {
             font-family: 'Poppins', sans-serif;
             margin: 0; padding: 0; box-sizing: border-box;
         }
+        
+        /* Navbar identique aux autres pages */
+        .topbar {
+            background: white;
+            padding: 8px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            height: 80px;
+        }
+        .topbar h2 {
+            color: #7b2ff7;
+            font-size: 36px;
+            font-weight: bold;
+        }
+        .cart-link {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            gap: 8px;
+            color: #333;
+            font-weight: 500;
+            transition: 0.2s ease;
+            font-size: 16px;
+        }
+        .cart-link:hover {
+            color: #7b2ff7;
+        }
+        .cart-link img {
+            width: 22px;
+            height: 22px;
+        }
+        .logout-btn {
+            background: #692be3;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: 0.3s ease;
+            font-size: 16px;
+        }
+        
+        /* Styles de la page historique */
         body {
             background: #f4f6f9;
-            padding: 40px;
+            padding: 0 0 40px 0;
         }
         .container {
             max-width: 900px;
-            margin: auto;
+            margin: 30px auto;
             background: white;
             border-radius: 12px;
             padding: 30px;
@@ -175,64 +220,79 @@ if (isset($_SESSION['commandes_supprimees'])) {
     </style>
 </head>
 <body>
-<div class="container">
-    <h1> Historique de vos commandes</h1>
+    <!-- Navbar identique aux autres pages -->
+    <div class="topbar">
+        <h2>Shopora</h2>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <a href="panier.php" class="cart-link">
+                <img src="images/Buy.png" alt="Panier">
+                Panier
+            </a>
+            <a href="historique.php" class="cart-link">
+                Historique
+            </a>
+            <a href="logout.php" class="logout-btn">Déconnexion</a>
+        </div>
+    </div>
 
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="success-msg"><?= $_SESSION['success'] ?></div>
-        <?php unset($_SESSION['success']); ?>
-    <?php endif; ?>
+    <div class="container">
+        <h1> Historique de vos commandes</h1>
 
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="error-msg"><?= $_SESSION['error'] ?></div>
-        <?php unset($_SESSION['error']); ?>
-    <?php endif; ?>
+        <?php if (isset($_SESSION['success'])): ?>
+            <div class="success-msg"><?= $_SESSION['success'] ?></div>
+            <?php unset($_SESSION['success']); ?>
+        <?php endif; ?>
 
-    <?php if (count($commandes) > 0): ?>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Date</th>
-                    <th>Total</th>
-                    <th>Statut</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($commandes as $commande): ?>
+        <?php if (isset($_SESSION['error'])): ?>
+            <div class="error-msg"><?= $_SESSION['error'] ?></div>
+            <?php unset($_SESSION['error']); ?>
+        <?php endif; ?>
+
+        <?php if (count($commandes) > 0): ?>
+            <table>
+                <thead>
                     <tr>
-                        <td><?= $commande['id_commande'] ?></td>
-                        <td><?= date('d/m/Y H:i', strtotime($commande['date_commande'])) ?></td>
-                        <td><?= number_format($commande['total'], 2) ?> DA</td>
-                        <td class="status-<?= $commande['statut'] ?>"><?= ucfirst($commande['statut']) ?></td>
-                        <td>
-                            <form method="get" onsubmit="
-                                if('<?= $commande['statut'] ?>' === 'validée') {
-                                    return confirm('Voulez-vous annuler cette commande ? Le stock sera réapprovisionné.');
-                                } else {
-                                    return confirm('Supprimer cette commande de votre historique ?');
-                                }
-                            ">
-                                <?php if ($commande['statut'] === 'validée'): ?>
-                                    <input type="hidden" name="annuler" value="<?= $commande['id_commande'] ?>">
-                                <?php else: ?>
-                                    <input type="hidden" name="supprimer" value="<?= $commande['id_commande'] ?>">
-                                <?php endif; ?>
-                                <button type="submit" class="action-btn" title="<?= $commande['statut'] === 'validée' ? 'Annuler la commande' : 'Supprimer de l\'historique' ?>">
-                                    <img src="images/delete-icon.png" alt="Supprimer">
-                                </button>
-                            </form>
-                        </td>
+                        <th>ID</th>
+                        <th>Date</th>
+                        <th>Total</th>
+                        <th>Statut</th>
+                        <th>Action</th>
                     </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else: ?>
-        <p class="empty-msg">Vous n'avez encore passé aucune commande.</p>
-    <?php endif; ?>
+                </thead>
+                <tbody>
+                    <?php foreach ($commandes as $commande): ?>
+                        <tr>
+                            <td><?= $commande['id_commande'] ?></td>
+                            <td><?= date('d/m/Y H:i', strtotime($commande['date_commande'])) ?></td>
+                            <td><?= number_format($commande['total'], 2) ?> DA</td>
+                            <td class="status-<?= $commande['statut'] ?>"><?= ucfirst($commande['statut']) ?></td>
+                            <td>
+                                <form method="get" onsubmit="
+                                    if('<?= $commande['statut'] ?>' === 'validée') {
+                                        return confirm('Voulez-vous annuler cette commande ? Le stock sera réapprovisionné.');
+                                    } else {
+                                        return confirm('Supprimer cette commande de votre historique ?');
+                                    }
+                                ">
+                                    <?php if ($commande['statut'] === 'validée'): ?>
+                                        <input type="hidden" name="annuler" value="<?= $commande['id_commande'] ?>">
+                                    <?php else: ?>
+                                        <input type="hidden" name="supprimer" value="<?= $commande['id_commande'] ?>">
+                                    <?php endif; ?>
+                                    <button type="submit" class="action-btn" title="<?= $commande['statut'] === 'validée' ? 'Annuler la commande' : 'Supprimer de l\'historique' ?>">
+                                        <img src="images/delete-icon.png" alt="Supprimer">
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <p class="empty-msg">Vous n'avez encore passé aucune commande.</p>
+        <?php endif; ?>
 
-    <a href="index.php" class="back-link">← Retour à la boutique</a>
-</div>
+        <a href="index.php" class="back-link">← Retour à la boutique</a>
+    </div>
 </body>
 </html>

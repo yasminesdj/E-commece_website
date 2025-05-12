@@ -54,8 +54,9 @@ CREATE TABLE historique_annulation (
   date_annulation DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Création de la table `panier`
-
+-- ======================
+-- TABLE panier
+-- ======================
 CREATE TABLE panier (
     id_utilisateur INT NOT NULL,
     id_item INT NOT NULL,
@@ -201,7 +202,7 @@ END$$
 
 DELIMITER ;
 
-
+----procedure finaliser commande
 DELIMITER $$
 
 CREATE PROCEDURE proc_finaliser_commande(IN p_id_utilisateur INT)

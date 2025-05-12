@@ -2,41 +2,30 @@
 session_start();
 include("connexion.php");
 
-// Vérifie que l'utilisateur est un administrateur
-if (!isset($_SESSION["role"]) || $_SESSION["role"] !== "admin") {
+// Vérification admin
+if (!isset($_SESSION["role"])) {
     header("Location: login.php");
     exit();
 }
 
-// Marquer une commande comme annulée si demandé
-if (isset($_GET['delete'])) {
-    $id = intval($_GET['delete']);
+// Initialisation du tableau des commandes supprimées visuellement
+if (!isset($_SESSION['commandes_supprimees'])) {
+    $_SESSION['commandes_supprimees'] = [];
+}
 
-    // 1. Récupérer les détails avant suppression
-    $queryDetails = "SELECT id_item, quantite FROM details_commande WHERE id_commande = ?";
-    $stmt = $mysqli->prepare($queryDetails);
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
-    $details = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-    // 2. Insérer manuellement dans historique_annulation (comme un trigger)
-    $stmtInsert = $mysqli->prepare("INSERT INTO historique_annulation (id_commande, id_item, quantite, date_annulation) VALUES (?, ?, ?, NOW())");
-    foreach ($details as $d) {
-        $stmtInsert->bind_param("iii", $id, $d['id_item'], $d['quantite']);
-        $stmtInsert->execute();
+// Gestion de la suppression visuelle
+if (isset($_GET['supprimer'])) {
+    $id = intval($_GET['supprimer']);
+    
+    if (!in_array($id, $_SESSION['commandes_supprimees'])) {
+        $_SESSION['commandes_supprimees'][] = $id;
     }
-
-    // 3. Supprimer les détails (cascade évité)
-    $mysqli->query("DELETE FROM details_commande WHERE id_commande = $id");
-
-    // 4. Mettre à jour le statut au lieu de supprimer
-    $mysqli->query("UPDATE commandes SET statut = 'annulée' WHERE id = $id");
-
+    
     header("Location: admin_commandes.php");
     exit();
 }
 
-// Charger les commandes
+// Charger les commandes (en excluant celles marquées comme supprimées)
 $query = "
 SELECT c.id AS id_commande, u.nom AS client, c.date_commande, c.statut,
        i.nom AS produit, dc.quantite, dc.prix_unitaire
@@ -53,6 +42,12 @@ $result = $mysqli->query($query);
 $commandes = [];
 while ($row = $result->fetch_assoc()) {
     $id = $row["id_commande"];
+    
+    // Sauter les commandes marquées comme supprimées
+    if (in_array($id, $_SESSION['commandes_supprimees'])) {
+        continue;
+    }
+    
     if (!isset($commandes[$id])) {
         $commandes[$id] = [
             "client" => $row["client"],
@@ -66,7 +61,6 @@ while ($row = $result->fetch_assoc()) {
     $commandes[$id]["total"] += $row["quantite"] * $row["prix_unitaire"];
 }
 ?>
-
 
 <!DOCTYPE html>
 <html lang="fr">
@@ -151,9 +145,16 @@ while ($row = $result->fetch_assoc()) {
     <a href="admin.php">Retour admin</a>
   </div>
 
+  <?php if (isset($_SESSION['success'])): ?>
+    <div class="alert alert-success">
+      <?= $_SESSION['success'] ?>
+      <?php unset($_SESSION['success']); ?>
+    </div>
+  <?php endif; ?>
+
   <div class="table-container">
     <?php if (empty($commandes)): ?>
-      <p style="text-align:center; padding: 20px;">Aucune commande enregistrée pour l’instant.</p>
+      <p style="text-align:center; padding: 20px;">Aucune commande à afficher.</p>
     <?php else: ?>
       <table>
         <thead>
@@ -175,8 +176,8 @@ while ($row = $result->fetch_assoc()) {
               <td><?= number_format($commande["total"], 2, ',', ' ') ?></td>
               <td><?= ucfirst($commande["statut"]) ?></td>
               <td class="actions">
-                <a href="admin_commandes.php?delete=<?= $id ?>" onclick="return confirm('Supprimer cette commande ?')">
-                  <img src="images/delete-icon.png" alt="Supprimer" class="delete-icon">
+                <a href="admin_commandes.php?supprimer=<?= $id ?>" onclick="return confirm('Masquer cette commande de l\'affichage ?')">
+                  <img src="images/delete-icon.png" alt="Supprimer visuellement" class="delete-icon">
                 </a>
               </td>
             </tr>

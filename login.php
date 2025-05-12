@@ -9,29 +9,46 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     $email = $_POST["email"];
+    $nom = $_POST["nom"];
     $mdp = $_POST["password"];
+    $role = $_POST["role"]; // Récupération du rôle sélectionné
 
     // Stocker l'email dans un cookie pendant 7 jours
     setcookie("email", $email, time() + (86400 * 7), "/");
 
-    $stmt = $mysqli->prepare("SELECT * FROM utilisateurs WHERE email=? AND mdp=?");
-    $stmt->bind_param("ss", $email, $mdp);
+    // Vérifier d'abord si l'utilisateur existe avec cet email
+    $stmt = $mysqli->prepare("SELECT * FROM utilisateurs WHERE email=?");
+    $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
 
-    if ($user = $result->fetch_assoc()) {
-        $_SESSION["id"] = $user["id"];
-        $_SESSION["nom"] = $user["nom"];
-        $_SESSION["role"] = $user["role"];
-
-        if ($user["role"] == "admin") {
-            header("Location: admin.php");
-        } else {
-            header("Location: index.php");
-        }
-        exit();
+    if ($result->num_rows == 0) {
+        $error = "Utilisateur introuvable avec cet email.";
     } else {
-        $error = "Email ou mot de passe incorrect.";
+        $user = $result->fetch_assoc();
+        
+        // Vérifier le mot de passe
+        if ($mdp !== $user['mdp']) { // Note: En pratique, utilisez password_verify() pour les mots de passe hashés
+            $error = "Mot de passe incorrect.";
+        } else {
+            // Vérifier aussi le nom si nécessaire
+            if ($nom !== $user['nom']) {
+                $error = "Nom incorrect.";
+            } else if ($role !== $user['role']) {
+                $error = "Rôle incorrect pour cet utilisateur.";
+            } else {
+                $_SESSION["id"] = $user["id"];
+                $_SESSION["nom"] = $user["nom"];
+                $_SESSION["role"] = $user["role"];
+
+                if ($user["role"] == "admin") {
+                    header("Location: admin.php");
+                } else {
+                    header("Location: index.php");
+                }
+                exit();
+            }
+        }
     }
 }
 ?>
@@ -138,6 +155,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     a:hover {
       text-decoration: underline;
     }
+    .role-selection {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin: 10px 0;
+    }
+    .role-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .role-option input[type="radio"] {
+      width: 18px;
+      height: 18px;
+    }
     @media (max-width: 900px) {
       .container {
         flex-direction: column;
@@ -156,18 +188,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <body>
   <div class="container">
     <div class="left">
-      <h1>Welcome to sophora — Explore More. Pay Less!</h1>
+      <h1>Rejoignez Shopora — Explore More. Pay Less!</h1>
       <img src="images/login-welcome.jpg" alt="Image de bienvenue">
     </div>
     <div class="right">
-      <h2>Login to your account</h2>
+      <h2>Connexion à votre compte</h2>
       <form method="POST">
+        <input type="text" name="nom" placeholder="Nom" required>
         <input type="email" name="email" placeholder="Email" value="<?= $_COOKIE['email'] ?? '' ?>" required>
-        <input type="password" name="password" placeholder="Password" required>
-        <button type="submit">Login now</button>
+        <input type="password" name="password" placeholder="Mot de passe" required>
+        
+        <div class="role-selection">
+          <div class="role-option">
+            <input type="radio" id="client" name="role" value="client" required>
+            <label for="client">Client</label>
+          </div>
+          <div class="role-option">
+            <input type="radio" id="admin" name="role" value="admin">
+            <label for="admin">Admin</label>
+          </div>
+        </div>
+        
+        <button type="submit">Se connecter</button>
       </form>
       <?php if ($error) echo "<div class='error'>$error</div>"; ?>
-      <a href="register.php">Don't have an account? Sign up</a>
+      <a href="register.php">Vous n'avez pas de compte ? Inscrivez-vous</a>
     </div>
   </div>
 </body>

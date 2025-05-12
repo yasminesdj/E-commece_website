@@ -76,10 +76,77 @@ if (!empty($ids)) {
   <title>Mon Panier - Shopora</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    * { font-family: 'Poppins', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #f4f6f9; padding: 30px; }
-    .container { max-width: 900px; margin: auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-    h2 { text-align: center; color: #7b2ff7; margin-bottom: 30px; }
+    * { 
+      font-family: 'Poppins', sans-serif; 
+      margin: 0; 
+      padding: 0; 
+      box-sizing: border-box; 
+    }
+    
+   
+    .topbar {
+  background: white;
+  padding: 8px 30px; 
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  height: 80px; 
+}
+    .topbar h2 {
+      color: #7b2ff7;
+      font-size: 36px;
+      font-weight: bold;
+      margin-bottom: 13px
+    }
+    .cart-link {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+      gap: 8px;
+      color: #333;
+      font-weight: 500;
+      transition: 0.2s ease;
+      font-size: 16px;
+    }
+    .cart-link:hover {
+      color: #7b2ff7;
+    }
+    .cart-link img {
+      width: 28px;
+      height: 28px;
+    }
+    .logout-btn {
+      background: #692be3;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: 0.3s ease;
+    }
+    .logout-btn:hover {
+      background: #692be3;
+    }
+    
+    /* Styles du panier */
+    body { 
+      background: #f4f6f9; 
+      padding: 0 0 30px 0; 
+    }
+    .container { 
+      max-width: 900px; 
+      margin: 30px auto; 
+      background: white; 
+      border-radius: 12px; 
+      padding: 30px; 
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
+    }
+    h2 { 
+      text-align: center; 
+      color: #7b2ff7; 
+      margin-bottom: 30px; 
+    }
     .item {
       display: flex;
       align-items: center;
@@ -225,6 +292,21 @@ if (!empty($ids)) {
   </style>
 </head>
 <body>
+
+  <div class="topbar">
+    <h2>Shopora</h2>
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <a href="panier.php" class="cart-link">
+        <img src="images/Buy.png" alt="Panier">
+        Panier
+      </a>
+      <a href="historique.php" class="cart-link">
+        Historique
+      </a>
+      <a href="logout.php" class="logout-btn">Déconnexion</a>
+    </div>
+  </div>
+
   <div class="container">
     <h2>
       <img src="images/Buy.png" alt="Panier" style="width: 36px; height: 36px; vertical-align: middle; margin-right: 8px;">
@@ -277,7 +359,7 @@ if (!empty($ids)) {
     <a class="back" href="index.php">← Retour à la boutique</a>
   </div>
 
-  <!-- Nouvelle alerte stylisée -->
+  
   <div class="alert-overlay" id="stockAlert">
     <div class="alert-box">
     <div class="alert-title">

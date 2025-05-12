@@ -7,6 +7,20 @@ if (!isset($_SESSION["role"]) || $_SESSION["role"] != "admin") {
     exit();
 }
 
+// 1. COOKIE - Mode d'affichage (grille/liste)
+$modeAffichage = $_COOKIE['admin_display_mode'] ?? 'grid'; // Valeur par défaut : grille
+
+if (isset($_GET['display'])) {
+    $modeAffichage = ($_GET['display'] === 'list') ? 'list' : 'grid';
+    setcookie('admin_display_mode', $modeAffichage, [
+        'expires' => time() + (86400 * 30), // 30 jours
+        'path' => '/admin',
+        'secure' => true,
+        'httponly' => true,
+        'samesite' => 'Strict'
+    ]);
+}
+
 $showForm = false;
 $editMode = false;
 $itemToEdit = null;

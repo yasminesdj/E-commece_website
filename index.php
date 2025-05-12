@@ -41,6 +41,17 @@ if ($sort == "alpha") {
     $query .= " ORDER BY prix DESC";
 }
 
+// Cookie pour préférence de tri
+if (isset($_GET["sort"])) {
+  setcookie("sort_pref", $_GET["sort"], [
+      'expires' => time() + (86400 * 30),
+      'path' => '/',
+      'secure' => true,
+      'httponly' => true,
+      'samesite' => 'Strict'
+  ]);
+}
+
 $stmt = $mysqli->prepare($query);
 $stmt->bind_param("s", $param);
 $stmt->execute();
@@ -241,6 +252,29 @@ $result = $stmt->get_result();
     .card-content {
       pointer-events: none;
     }
+    .clear-btn {
+  background: #7b2ff7;
+  color: white;
+  padding: 10px;
+  font-size: 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.clear-btn:hover {
+  background: #7b2ff7;
+}
+
+form {
+  display: flex;
+  gap: 10px;
+  background: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  align-items: center;
+}
   </style>
 </head>
 <body>
@@ -261,9 +295,9 @@ $result = $stmt->get_result();
 
 <div class="carousel">
   <div class="carousel-text">
-    <h3 id="carouselSubtitle">Best Deal Online on smart watches</h3>
-    <h1 id="carouselTitle">SMART WEARABLE.</h1>
-    <p id="carouselPromo">UP TO 80% OFF</p>
+    <h3 id="carouselSubtitle">Meilleure offre en ligne sur les montres connectées</h3>
+    <h1 id="carouselTitle">ACCESSOIRES INTELLIGENTS</h1>
+    <p id="carouselPromo">Jusqu’à 80 % de réduction</p>
   </div>
   <img id="carouselImage" class="product-img" src="images/smartwatch.jpg" alt="Produit Vedette">
   <div class="nav-btn nav-left" onclick="changeImage(-1)">
@@ -284,6 +318,7 @@ $result = $stmt->get_result();
       <option value="prix_desc" <?= $sort=="prix_desc"?"selected":"" ?>>Prix décroissant</option>
     </select>
     <button type="submit">Filtrer</button>
+    <button type="button" onclick="clearFilters()" class="clear-btn">Effacer les filtres</button>
   </form>
 </div>
 
@@ -304,21 +339,21 @@ $result = $stmt->get_result();
 const carouselData = [
   {
     img: 'images/smartwatch.jpg',
-    title: 'SMART WEARABLE.',
-    subtitle: 'Best Deal Online on smart watches',
-    promo: 'UP TO 80% OFF'
+    title: 'ACCESSOIRES INTELLIGENTS',
+    subtitle: 'Meilleure offre en ligne sur les montres connectées',
+    promo: 'Jusqu’à 80 % de réduction'
   },
   {
     img: 'images/headphones.jpg',
-    title: 'WIRELESS SOUND.',
-    subtitle: 'Top quality headphones just for you',
-    promo: 'UP TO 60% OFF'
+    title: 'SON SANS FIL.',
+    subtitle: 'Casques de haute qualité rien que pour vous',
+    promo: 'Jusqu’à 50 % de réduction'
   },
   {
     img: 'images/shoes.jpg',
-    title: 'NIKE SNEAKERS.',
-    subtitle: 'Run faster, look cooler.',
-    promo: 'UP TO 50% OFF'
+    title: 'BASKETS NIKE',
+    subtitle: 'Courez plus vite, ayez plus de style.',
+    promo: 'Jusqu’à 50 % de réduction'
   }
 ];
 
@@ -360,6 +395,10 @@ function showAddEffect(btn, id) {
   event.stopPropagation();
 }
 
+function clearFilters() {
+  // Rediriger vers la page sans paramètres de filtre
+  window.location.href = window.location.pathname;
+}
 window.onload = updateCarousel;
 </script>
 
