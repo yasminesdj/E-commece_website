@@ -28,7 +28,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $user = $result->fetch_assoc();
         
         // Vérifier le mot de passe
-        if ($mdp !== $user['mdp']) { // Note: En pratique, utilisez password_verify() pour les mots de passe hashés
+        if ($mdp !== $user['mdp']) { 
             $error = "Mot de passe incorrect.";
         } else {
             // Vérifier aussi le nom si nécessaire

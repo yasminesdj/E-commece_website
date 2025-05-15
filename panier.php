@@ -2,11 +2,24 @@
 session_start();
 include("connexion.php");
 
+if (!isset($_SESSION["id"])) {
+    header("Location: login.php");
+    exit();
+}
+
 if (!isset($_SESSION["panier"])) {
     $_SESSION["panier"] = [];
 }
 
-$id_user = $_SESSION["id"] ?? null;
+// Synchronisation : si le panier en BDD est vide, on vide aussi la session
+$id_user = $_SESSION["id"];
+$check = $mysqli->prepare("SELECT COUNT(*) as total FROM panier WHERE id_utilisateur = ?");
+$check->bind_param("i", $id_user);
+$check->execute();
+$res = $check->get_result()->fetch_assoc();
+if ($res['total'] == 0) {
+    $_SESSION["panier"] = [];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['quantite'])) {
     foreach ($_POST['quantite'] as $id => $quantite) {

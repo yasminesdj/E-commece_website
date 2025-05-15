@@ -2,6 +2,11 @@
 session_start();
 include("connexion.php");
 
+if (!isset($_SESSION["id"])) {
+    header("Location: login.php");
+    exit();
+}
+
 if (!isset($_SESSION["panier"])) {
     $_SESSION["panier"] = [];
 }

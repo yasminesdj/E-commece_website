@@ -79,50 +79,74 @@ BEGIN
     WHERE dc.id_commande = p_id_commande;
 END$$
 
--- Procédure 2 : Finaliser une commande et vider le panier
+----procedure2: finaliser commande et vider le panier 
 DELIMITER $$
 
 CREATE PROCEDURE proc_finaliser_commande(IN p_id_utilisateur INT)
 BEGIN
-    DECLARE v_id_commande INT;
-    DECLARE v_total DECIMAL(10,2) DEFAULT 0;
-    
-    -- Désactiver temporairement les triggers
-    SET @disable_triggers = TRUE;
-    
-    -- Calcul du total
-    SELECT SUM(i.prix * p.quantite) INTO v_total
-    FROM panier p
-    JOIN items i ON i.id = p.id_item
-    WHERE p.id_utilisateur = p_id_utilisateur;
-    
-    -- Création de l'entête de commande
-    INSERT INTO commandes(id_utilisateur, date_commande, total, statut)
-    VALUES (p_id_utilisateur, NOW(), v_total, 'validée');
-    
-    SET v_id_commande = LAST_INSERT_ID();
-    
-    -- Insertion des lignes de commande (le trigger ne modifiera PAS le stock)
-    INSERT INTO details_commande(id_commande, id_item, quantite, prix_unitaire)
-    SELECT v_id_commande, p.id_item, p.quantite, i.prix
-    FROM panier p
-    JOIN items i ON i.id = p.id_item
-    WHERE p.id_utilisateur = p_id_utilisateur;
-    
-    -- Mise à jour MANUELLE du stock (une seule fois)
-    UPDATE items i
-    JOIN panier p ON i.id = p.id_item
-    SET i.stock = i.stock - p.quantite
-    WHERE p.id_utilisateur = p_id_utilisateur;
-    
-    -- Vider le panier
-    DELETE FROM panier WHERE id_utilisateur = p_id_utilisateur;
-    
-    -- Réactiver les triggers
-    SET @disable_triggers = NULL;
-END$$
+  DECLARE done INT DEFAULT FALSE;
+  DECLARE v_id_item INT;
+  DECLARE v_quantite INT;
+  DECLARE v_prix FLOAT;
+  DECLARE v_commande_id INT;
+  DECLARE v_total DECIMAL(10,2) DEFAULT 0;
 
-DELIMITER ;
+  -- Curseur pour parcourir le panier
+  DECLARE c CURSOR FOR
+    SELECT id_item, quantite FROM panier WHERE id_utilisateur = p_id_utilisateur;
+  
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+  -- Calcul du total
+  SELECT SUM(i.prix * p.quantite)
+  INTO v_total
+  FROM panier p
+  JOIN items i ON i.id = p.id_item
+  WHERE p.id_utilisateur = p_id_utilisateur;
+
+  START TRANSACTION;
+
+  -- Insérer la commande avec le total
+  INSERT INTO commandes (id_utilisateur, total, statut)
+  VALUES (p_id_utilisateur, v_total, 'validée');
+
+  SET v_commande_id = LAST_INSERT_ID();
+
+  OPEN c;
+
+  boucle_panier: LOOP
+    FETCH c INTO v_id_item, v_quantite;
+    IF done THEN
+      LEAVE boucle_panier;
+    END IF;
+
+    -- Récupérer le prix unitaire
+    SELECT prix INTO v_prix FROM items WHERE id = v_id_item;
+
+    -- Vérifier le stock disponible
+    IF v_quantite > (SELECT stock FROM items WHERE id = v_id_item) THEN
+      ROLLBACK;
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Quantité demandée dépasse le stock disponible';
+    END IF;
+
+    -- Ajouter au détail commande
+    INSERT INTO details_commande (id_commande, id_item, quantite, prix_unitaire)
+    VALUES (v_commande_id, v_id_item, v_quantite, v_prix);
+
+    -- Mettre à jour le stock
+    UPDATE items SET stock = stock - v_quantite WHERE id = v_id_item;
+  END LOOP;
+
+  CLOSE c;
+
+  -- Vider le panier
+  DELETE FROM panier WHERE id_utilisateur = p_id_utilisateur;
+
+  COMMIT;
+END $$
+
+
+
 
 -- Procédure 3 : Historique des commandes d’un client
 CREATE PROCEDURE proc_historique_commandes(IN p_id_utilisateur INT)
@@ -201,60 +225,4 @@ BEGIN
 END$$
 
 DELIMITER ;
-
-----procedure finaliser commande
-DELIMITER $$
-
-CREATE PROCEDURE proc_finaliser_commande(IN p_id_utilisateur INT)
-BEGIN
-  DECLARE done INT DEFAULT FALSE;
-  DECLARE v_id_item INT;
-  DECLARE v_quantite INT;
-  DECLARE v_prix FLOAT;
-  DECLARE v_commande_id INT;
-
-  -- Curseur pour parcourir le panier
-  DECLARE c CURSOR FOR
-    SELECT id_item, quantite FROM panier WHERE id_utilisateur = p_id_utilisateur;
-  
-  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
-
-  START TRANSACTION;
-
-  -- Insérer la commande
-  INSERT INTO commandes (id_utilisateur) VALUES (p_id_utilisateur);
-  SET v_commande_id = LAST_INSERT_ID();
-
-  OPEN c;
-
-  boucle_panier: LOOP
-    FETCH c INTO v_id_item, v_quantite;
-    IF done THEN
-      LEAVE boucle_panier;
-    END IF;
-
-    -- Récupérer le prix unitaire
-    SELECT prix INTO v_prix FROM items WHERE id = v_id_item;
-
-    -- Vérifier le stock disponible
-    IF v_quantite > (SELECT stock FROM items WHERE id = v_id_item) THEN
-      ROLLBACK;
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Quantité demandée dépasse le stock disponible';
-    END IF;
-
-    -- Ajouter au détail commande
-    INSERT INTO details_commande (id_commande, id_item, quantite, prix_unitaire)
-    VALUES (v_commande_id, v_id_item, v_quantite, v_prix);
-
-    -- Mettre à jour le stock
-    UPDATE items SET stock = stock - v_quantite WHERE id = v_id_item;
-  END LOOP;
-
-  CLOSE c;
-
-  -- Vider le panier
-  DELETE FROM panier WHERE id_utilisateur = p_id_utilisateur;
-
-  COMMIT;
-END $$
 

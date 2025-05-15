@@ -2,6 +2,11 @@
 session_start();
 include("connexion.php");
 
+if (!isset($_SESSION["id"])) {
+    header("Location: login.php");
+    exit();
+}
+
 if (!isset($_GET['id'])) {
     header("Location: index.php");
     exit();
@@ -189,7 +194,7 @@ if (isset($_GET["add"])) {
   </style>
 </head>
 <body>
-  <!-- Navbar identique aux autres pages -->
+ 
   <div class="topbar">
     <h2>Shopora</h2>
     <div style="display: flex; align-items: center; gap: 20px;">
